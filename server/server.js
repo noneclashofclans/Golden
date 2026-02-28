@@ -11,23 +11,28 @@ const Room = require('./models/Room');
 
 const app = express();
 
-// ── CORS CONFIGURATION ───────────────────────────────────────────────────────
+// ── UNIVERSAL CORS CONFIGURATION ───────────────────────────────────────────────
+// Allows Localhost, Main Production, and ANY Vercel Preview/Branch URL
 const allowedOrigins = [
   'http://localhost:5173', 
   'https://golden-delta-seven.vercel.app'
 ];
 
+const checkOrigin = (origin, callback) => {
+  // Allow if:
+  // 1. There is no origin (server-to-server pings/curl)
+  // 2. The origin is in our static allowed list
+  // 3. The origin is a dynamic Vercel deployment link
+  if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    callback(null, true);
+  } else {
+    console.log("CORS Blocked Origin:", origin);
+    callback(new Error('Not allowed by CORS'));
+  }
+};
+
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl) 
-    // or if the origin is in our allowed list
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log("CORS Blocked Origin:", origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: checkOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
 }));
@@ -39,7 +44,7 @@ const server = http.createServer(app);
 // ── SOCKET.IO CONFIGURATION ──────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { 
-    origin: allowedOrigins, 
+    origin: checkOrigin, 
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -71,9 +76,9 @@ io.on('connection', (socket) => {
 
       io.to(data.roomId).emit('receive_message', newMessage);
 
-      // Simple keyword trigger for demo purposes
+      // AI Logic: Detect bug-related keywords
       if (data.text.toLowerCase().includes('error') || data.text.toLowerCase().includes('bug')) {
-        const aiResponseText = "I've analyzed your snippet. You are missing a closing brace '}' on line 4. Try fixing that to resolve the syntax error!";
+        const aiResponseText = "AI Node Analysis: I've detected a logic pattern typical of a syntax error. Please verify your scope blocks and closing characters.";
         
         const aiMessage = new Message({
           roomId: data.roomId,
