@@ -11,13 +11,20 @@ const Room = require('./models/Room');
 
 const app = express();
 
-const allowedOrigins = ['http://localhost:5173', 'https://golden-delta-seven.vercel.app'];
+// ── CORS CONFIGURATION ───────────────────────────────────────────────────────
+const allowedOrigins = [
+  'http://localhost:5173', 
+  'https://golden-delta-seven.vercel.app'
+];
 
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl) 
+    // or if the origin is in our allowed list
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log("CORS Blocked Origin:", origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -25,21 +32,25 @@ app.use(cors({
   credentials: true,
 }));
 
+app.use(express.json());
+
 const server = http.createServer(app);
 
+// ── SOCKET.IO CONFIGURATION ──────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { 
     origin: allowedOrigins, 
-    methods: ["GET", "POST"] 
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
-
+// ── DATABASE CONNECTION ──────────────────────────────────────────────────────
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected"))
-  .catch(err => console.log(err));
+  .catch(err => console.log("MongoDB Connection Error:", err));
 
-
+// ── REAL-TIME LOGIC (SOCKET.IO) ──────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log(`User Connected: ${socket.id}`);
 
@@ -49,30 +60,35 @@ io.on('connection', (socket) => {
   });
 
   socket.on('send_message', async (data) => {
-    const newMessage = new Message({
-      roomId: data.roomId,
-      sender: data.senderId,
-      text: data.text,
-      isAI: false
-    });
-    await newMessage.save();
-
-    io.to(data.roomId).emit('receive_message', newMessage);
-
-    if (data.text.toLowerCase().includes('error') || data.text.toLowerCase().includes('bug')) {
-      const aiResponseText = "I've analyzed your snippet. You are missing a closing brace '}' on line 4. Try fixing that to resolve the syntax error!";
-      
-      const aiMessage = new Message({
+    try {
+      const newMessage = new Message({
         roomId: data.roomId,
-        sender: null, 
-        text: aiResponseText,
-        isAI: true
+        sender: data.senderId,
+        text: data.text,
+        isAI: false
       });
-      
-      await aiMessage.save();
-      setTimeout(() => {
-        io.to(data.roomId).emit('receive_message', aiMessage);
-      }, 1000);
+      await newMessage.save();
+
+      io.to(data.roomId).emit('receive_message', newMessage);
+
+      // Simple keyword trigger for demo purposes
+      if (data.text.toLowerCase().includes('error') || data.text.toLowerCase().includes('bug')) {
+        const aiResponseText = "I've analyzed your snippet. You are missing a closing brace '}' on line 4. Try fixing that to resolve the syntax error!";
+        
+        const aiMessage = new Message({
+          roomId: data.roomId,
+          sender: null, 
+          text: aiResponseText,
+          isAI: true
+        });
+        
+        await aiMessage.save();
+        setTimeout(() => {
+          io.to(data.roomId).emit('receive_message', aiMessage);
+        }, 1000);
+      }
+    } catch (err) {
+      console.error("Socket send_message error:", err);
     }
   });
 
@@ -81,14 +97,14 @@ io.on('connection', (socket) => {
   });
 });
 
-
+// ── ROUTES ───────────────────────────────────────────────────────────────────
 const authRoutes = require('./routes/userLogin');
 app.use('/api/auth', authRoutes);
 
 app.get('/', (req, res) => {
-    res.send('Hey there from backend');
+    res.send('DevRoomsAI Backend Node: Active');
 });
 
-
+// ── SERVER START ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
