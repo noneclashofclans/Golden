@@ -1,47 +1,78 @@
-const PORT = 5000;
 const express = require('express');
-const app = express();
-const dotenv = require('dotenv');
-const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 const mongoose = require('mongoose');
-
+const cors = require('cors');
 require('dotenv').config();
 
-app.use(cors({
-    origin: ["http://localhost:5173"],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true
-}));
+const User = require('./models/User');
+const Message = require('./models/Message');
+const Room = require('./models/Room');
 
-
-app.use(express.urlencoded({extended: false}))
+const app = express();
+app.use(cors());
 app.use(express.json());
 
-// const connectDB = async () => {
-//   try {
-//     console.log('Attempting to connect to MongoDB...');
-//     await mongoose.connect(process.env.MONGO_URI);
-//     console.log('MongoDB Connected!');
-//   } catch (error) {
-//     console.error('MongoDB connection error:', error.message);
-//     console.error('Make sure your IP is whitelisted and your URI is correct.');
-//     process.exit(1); 
-//   }
-// };
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "http://localhost:5173", methods: ["GET", "POST"] }
+});
 
-// connectDB();
 
-// const Expense = require('./models/Expense');
-// const authRoutes = require('./routes/userLogin');
-// const expenseRoutes = require('./routes/expenseRoutes');
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB Connected"))
+  .catch(err => console.log(err));
 
-// app.use('/api/auth', authRoutes);
-// app.use('/api/expenses', expenseRoutes);
+
+io.on('connection', (socket) => {
+  console.log(`User Connected: ${socket.id}`);
+
+  socket.on('join_room', (roomId) => {
+    socket.join(roomId);
+    console.log(`User joined room: ${roomId}`);
+  });
+
+  socket.on('send_message', async (data) => {
+    const newMessage = new Message({
+      roomId: data.roomId,
+      sender: data.senderId,
+      text: data.text,
+      isAI: false
+    });
+    await newMessage.save();
+
+    io.to(data.roomId).emit('receive_message', newMessage);
+
+    if (data.text.toLowerCase().includes('error') || data.text.toLowerCase().includes('bug')) {
+      const aiResponseText = "I've analyzed your snippet. You are missing a closing brace '}' on line 4. Try fixing that to resolve the syntax error!";
+      
+      const aiMessage = new Message({
+        roomId: data.roomId,
+        sender: null, 
+        text: aiResponseText,
+        isAI: true
+      });
+      
+      await aiMessage.save();
+      setTimeout(() => {
+        io.to(data.roomId).emit('receive_message', aiMessage);
+      }, 1000);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log("User Disconnected", socket.id);
+  });
+});
+
+
+const authRoutes = require('./routes/userLogin');
+app.use('/api/auth', authRoutes);
 
 app.get('/', (req, res) => {
     res.send('Hey there from backend');
-})
+});
 
-app.listen(PORT, () => {
-    console.log(`Backend is running at ${PORT}`);
-})
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

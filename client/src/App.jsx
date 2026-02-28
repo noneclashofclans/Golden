@@ -5,7 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import LandingPage from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
-// import Dashboard from './pages/Dashboard';
+import Dashboard from './pages/Dashboard';
 // import ChatRoom from './pages/ChatRoom';
 
 function App() {
@@ -22,9 +22,9 @@ function App() {
           
           <Route path="/register" element={<Register />} />
           
-          {/* <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           
-          <Route path="/chat/:roomId" element={<ChatRoom />} />  */}
+         {/* <Route path="/chat/:roomId" element={<ChatRoom />} /> */}
           
         </Routes>
       </AnimatePresence>
